@@ -1,6 +1,0 @@
-config ORACLEASM
-	depends on BLK_DEV
-	tristate "Support for Oracle ASM driver"
-	default m
-
-
