@@ -1310,7 +1310,7 @@ include/config/auto.conf: \
 ifneq "$(ARCH)" "x86"
 include/config/auto.conf: FORCE
 endif
-ifneq "$(KERNELVERSION)" "5.4.17-2136.331.7.el7uek.x86_64"
+ifneq "$(KERNELVERSION)" "5.4.17-2136.332.5.2.el7uek.x86_64"
 include/config/auto.conf: FORCE
 endif
 ifneq "$(CC_VERSION_TEXT)" "gcc (GCC) 4.8.5 20150623 (Red Hat 4.8.5-44.0.3)"

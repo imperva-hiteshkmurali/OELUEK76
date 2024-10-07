@@ -45,6 +45,7 @@ struct sym_entry {
 	unsigned long long addr;
 	unsigned long long size;
 	unsigned int len;
+	unsigned int seq;
 	unsigned int start_pos;
 	unsigned char *sym;
 	unsigned int percpu_absolute;
@@ -359,6 +360,7 @@ static int symbol_valid(struct sym_entry *s)
 		"kallsyms_markers",
 		"kallsyms_token_table",
 		"kallsyms_token_index",
+		"kallsyms_seqs_of_names",
 		"kallsyms_symbol_modules",
 		"kallsyms_modules",
 
@@ -482,6 +484,35 @@ static int symbol_absolute(struct sym_entry *s)
 	return s->percpu_absolute;
 }
 
+static int compare_names(const void *a, const void *b)
+{
+	int ret;
+	char sa_namebuf[KSYM_NAME_LEN];
+	char sb_namebuf[KSYM_NAME_LEN];
+	const struct sym_entry *sa = a;
+	const struct sym_entry *sb = b;
+
+	expand_symbol(sa->sym, sa->len, sa_namebuf);
+	expand_symbol(sb->sym, sb->len, sb_namebuf);
+	ret = strcmp(&sa_namebuf[1], &sb_namebuf[1]);
+	if (!ret) {
+		if (sa->addr > sb->addr)
+			return 1;
+		else if (sa->addr < sb->addr)
+			return -1;
+
+		/* keep old order */
+		return (int)(sa->seq - sb->seq);
+	}
+
+	return ret;
+}
+
+static void sort_symbols_by_name(void)
+{
+	qsort(table, table_cnt, sizeof(struct sym_entry), compare_names);
+}
+
 static void write_src(void)
 {
 	unsigned int i, k, off;
@@ -583,6 +614,7 @@ static void write_src(void)
 	for (i = 0; i < table_cnt; i++) {
 		if ((i & 0xFF) == 0)
 			markers[i >> 8] = off;
+		table[i].seq = i;
 
 		printf("\t.byte 0x%02x", table[i].len);
 		for (k = 0; k < table[i].len; k++)
@@ -600,21 +632,6 @@ static void write_src(void)
 
 	free(markers);
 
-	output_label("kallsyms_token_table");
-	off = 0;
-	for (i = 0; i < 256; i++) {
-		best_idx[i] = off;
-		expand_symbol(best_table[i], best_table_len[i], buf);
-		printf("\t.asciz\t\"%s\"\n", buf);
-		off += strlen(buf) + 1;
-	}
-	printf("\n");
-
-	output_label("kallsyms_token_index");
-	for (i = 0; i < 256; i++)
-		printf("\t.short\t%d\n", best_idx[i]);
-	printf("\n");
-
 #ifdef CONFIG_KALLMODSYMS
 	output_label("kallsyms_modules");
 	for (i = 0; i < builtin_module_len; i++)
@@ -629,6 +646,30 @@ static void write_src(void)
 		printf("\t.int\t%d\n", table[i].module);
 	printf("\n");
 #endif
+
+	sort_symbols_by_name();
+	output_label("kallsyms_seqs_of_names");
+	for (i = 0; i < table_cnt; i++)
+		printf("\t.byte 0x%02x, 0x%02x, 0x%02x\n",
+			(unsigned char)(table[i].seq >> 16),
+			(unsigned char)(table[i].seq >> 8),
+			(unsigned char)(table[i].seq >> 0));
+	printf("\n");
+
+	output_label("kallsyms_token_table");
+	off = 0;
+	for (i = 0; i < 256; i++) {
+		best_idx[i] = off;
+		expand_symbol(best_table[i], best_table_len[i], buf);
+		printf("\t.asciz\t\"%s\"\n", buf);
+		off += strlen(buf) + 1;
+	}
+	printf("\n");
+
+	output_label("kallsyms_token_index");
+	for (i = 0; i < 256; i++)
+		printf("\t.short\t%d\n", best_idx[i]);
+	printf("\n");
 }
 
 /* table lookup compression functions */
